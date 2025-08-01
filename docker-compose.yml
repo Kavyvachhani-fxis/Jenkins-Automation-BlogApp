@@ -6,15 +6,17 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "3001:3000"  # changed external port from 3000 to 3001
+      - "3001:3000"  # Host:Container - Access frontend via http://localhost:3001
     container_name: wanderlust_frontend
     restart: unless-stopped
+    depends_on:
+      - backend
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "5000:5000"
+      - "5000:5000"  # Host:Container - Access backend via http://localhost:5000
     container_name: wanderlust_backend
     restart: unless-stopped
