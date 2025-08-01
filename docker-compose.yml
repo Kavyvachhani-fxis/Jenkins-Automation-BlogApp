@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "3000:3000"
+      - "3001:3000"  # changed external port from 3000 to 3001
     container_name: wanderlust_frontend
     restart: unless-stopped
 
