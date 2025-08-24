@@ -31,9 +31,11 @@ pipeline {
                     // Print out the response for debugging purposes
                     echo "CPE API Response: ${response}"
 
-                    // Parse the response if you need to extract specific details (example: JSON parsing)
-                    def cpeJson = readJSON text: response
-                    // You can access specific details from the response here
+                    // Parse the response using groovy's JsonSlurper
+                    def jsonSlurper = new groovy.json.JsonSlurper()
+                    def cpeJson = jsonSlurper.parseText(response)
+
+                    // Access specific fields from the JSON (for example, total results)
                     echo "Number of CPE records found: ${cpeJson.totalResults}"
                 }
             }
