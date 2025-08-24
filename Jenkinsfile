@@ -2,40 +2,49 @@ pipeline {
     agent any
 
     environment {
-        SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_TOKEN = 'sqv_690080621f71ee94197f6c43ffb96f18da7a3'
-        REPORT_FILE = 'Security_Report.pdf'
+        GITHUB_REPO = "https://github.com/Kavyvachhani-fxis/Jenkins-Automation-BlogApp.git"
+        SONAR_URL = "http://sonarqube:9000" // Replace with your SonarQube URL
+        EMAIL_RECIPIENT = "d23it180@charusat.edu.in"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Kavyvachhani-fxis/Jenkins-Automation-BlogApp.git'
+                git url: "${GITHUB_REPO}"
             }
         }
-        
+
         stage('Build') {
             steps {
-                sh 'mvn -B -DskipTests clean package || true'
+                script {
+                    // Assuming Maven for building Java projects
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
 
-        stage('Dependency-Check') {
+        stage('Dependency Check') {
             steps {
-                sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/report owasp/dependency-check --project "CAST AutoSec" --scan /src --out /report --format ALL'
+                script {
+                    sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/report owasp/dependency-check --project "CAST AutoSec" --scan /src --out /report --format ALL'
+                }
             }
         }
 
-        stage('Trivy') {
+        stage('Trivy Scan') {
             steps {
-                sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/out aquasec/trivy fs --security-checks vuln,config --severity HIGH,CRITICAL --format json -o /out/trivy.json /src'
+                script {
+                    sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/out aquasec/trivy fs --security-checks vuln,config --severity HIGH,CRITICAL --format json -o /out/trivy.json /src'
+                }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar') {
-                    sh 'mvn -B -DskipTests sonar:sonar -Dsonar.host.url=http://localhost:9000 || true'
+                script {
+                    withSonarQubeEnv('sonar') {
+                        sh 'mvn sonar:sonar -Dsonar.host.url=${SONAR_URL} -Dsonar.projectKey=CAST_AutoSec'
+                    }
                 }
             }
         }
@@ -45,13 +54,23 @@ pipeline {
                 archiveArtifacts artifacts: 'reports/**/*.*', fingerprint: true
             }
         }
+
+        stage('Send Email') {
+            steps {
+                script {
+                    // Example of sending an email with the generated report
+                    emailext subject: "CAST AutoSec Pipeline Report", 
+                             body: "The security scan has completed. Please find the attached report.", 
+                             to: "${EMAIL_RECIPIENT}", 
+                             attachLog: true
+                }
+            }
+        }
     }
+
     post {
         always {
-            emailext subject: "Build Complete: ${currentBuild.currentResult}",
-                     body: "Build status: ${currentBuild.currentResult}\nCheck the logs for more information.",
-                     to: 'd23it180@charusat.edu.in',
-                     from: 'kavytelecom@gmail.com'
+            cleanWs() // Clean up workspace after job completes
         }
     }
 }
