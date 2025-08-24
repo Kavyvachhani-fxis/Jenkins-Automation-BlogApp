@@ -1,91 +1,41 @@
 pipeline {
     agent any
     environment {
-        GITHUB_REPO = 'https://github.com/Kavyvachhani-fxis/Jenkins-Automation-BlogApp.git'
-        SONARQUBE_URL = 'http://localhost:9000'
-        EMAIL_RECIPIENT = 'd23it180@charusat.edu.in'
-        NVD_API_URL = 'https://services.nvd.nist.gov/rest/json/cpes/2.0'
-        CPE_MATCH_STRING = 'cpe:2.3:o:microsoft:windows_10'
+        WORKSPACE = '/var/lib/jenkins/workspace'
     }
-
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: "${GITHUB_REPO}"
+                checkout scm
             }
         }
-
-        stage('Build') {
-            steps {
-                sh 'mvn -B -DskipTests clean package || true'
-            }
-        }
-
-        stage('CPE API Integration') {
-            steps {
-                script {
-                    // Call the NVD CPE API to get CPE records
-                    def cpeUrl = "${NVD_API_URL}?cpeMatchString=${CPE_MATCH_STRING}"
-                    def response = sh(script: "curl -s ${cpeUrl}", returnStdout: true).trim()
-                    
-                    // Print out the response for debugging purposes
-                    echo "CPE API Response: ${response}"
-
-                    // Parse the response using groovy's JsonSlurper
-                    def jsonSlurper = new groovy.json.JsonSlurper()
-                    def cpeJson = jsonSlurper.parseText(response)
-
-                    // Access specific fields from the JSON (for example, total results)
-                    echo "Number of CPE records found: ${cpeJson.totalResults}"
+        stage('Run Security Scans') {
+            parallel {
+                stage('Dependency Check') {
+                    steps {
+                        sh '''
+                        docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/report owasp/dependency-check --project CAST_AutoSec --scan /src/pom.xml --out /report --format ALL --disableNVD
+                        '''
+                    }
+                }
+                stage('Trivy Scan') {
+                    steps {
+                        // Example: run Trivy Scan in parallel
+                        sh 'trivy --input /src --output /report/trivy_report.json'
+                    }
                 }
             }
         }
-
-        stage('Dependency-Check') {
-            steps {
-                sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/report owasp/dependency-check --project CAST_AutoSec --scan /src --out /report --format ALL'
-            }
-        }
-
-        stage('Trivy Scan') {
-            steps {
-                sh 'docker run --rm -v $WORKSPACE:/src -v $WORKSPACE/reports:/out aquasec/trivy fs --security-checks vuln,config --severity HIGH,CRITICAL --format json -o /out/trivy.json /src'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonar') {
-                    sh 'mvn -B -DskipTests sonar:sonar -Dsonar.host.url=${SONARQUBE_URL} || true'
-                }
-            }
-        }
-
         stage('Publish Reports') {
             steps {
-                archiveArtifacts artifacts: 'reports/**/*.*', fingerprint: true
-            }
-        }
-
-        stage('Send Email') {
-            steps {
+                // Collect the generated reports and send an email or store in Jenkins
                 emailext (
-                    subject: 'Security and Build Report: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}',
-                    body: '''Build Result: ${BUILD_STATUS}
-                    Please find the security scan results attached.
-                    Check the console output for details.
-                    ''',
-                    to: "${EMAIL_RECIPIENT}",
-                    attachmentsPattern: 'reports/**/*.pdf',
-                    mimeType: 'text/plain'
+                    subject: "Security Scan Results",
+                    body: "The security scans have completed. Check the attached reports.",
+                    attachmentsPattern: "reports/*",
+                    to: "youremail@example.com"
                 )
             }
-        }
-    }
-
-    post {
-        always {
-            cleanWs()  // Clean workspace after every build
         }
     }
 }
