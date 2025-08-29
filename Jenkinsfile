@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     environment {
-        NVD_API_KEY = '9713571f-5580-43b2-b077-c6898780c4d8' // TEMPORARY hardcoded key for testing only
+        // 🔐 Use hardcoded key for now (replace with credentials() later)
+        NVD_API_KEY = '9713571f-5580-43b2-b077-c6898780c4d8'
     }
 
     stages {
@@ -12,25 +13,36 @@ pipeline {
             }
         }
 
-        stage('Run Dependency-Check') {
+        stage('Generate config.properties') {
             steps {
                 script {
-                    echo "Running Dependency-Check with hardcoded NVD API key..."
+                    echo "Creating config.properties with NVD API key..."
+                    writeFile file: 'config.properties', text: "nvd.api.key=${env.NVD_API_KEY}"
+                }
+            }
+        }
+
+        stage('Run Dependency-Check with API Key') {
+            steps {
+                script {
+                    echo "Running OWASP Dependency-Check using official image and mounted config..."
                     sh """
                         mkdir -p reports
-                        docker run --rm -v \$WORKSPACE:/src -v \$WORKSPACE/reports:/report \
-                          owasp/dependency-check \
-                          --project CAST_AutoSec \
+                        docker run --rm \
+                          -v \$WORKSPACE:/src \
+                          -v \$WORKSPACE/reports:/report \
+                          -v \$WORKSPACE/config.properties:/usr/share/dependency-check/data/config.properties \
+                          ghcr.io/jeremylong/owasp-dependency-check:latest \
+                          --project "CAST AutoSec" \
                           --scan /src \
                           --out /report \
-                          --format ALL \
-                          --nvdApiKey \$NVD_API_KEY
+                          --format ALL
                     """
                 }
             }
         }
 
-        stage('Archive Report') {
+        stage('Archive Reports') {
             steps {
                 archiveArtifacts artifacts: 'reports/**/*', fingerprint: true
             }
@@ -39,7 +51,10 @@ pipeline {
 
     post {
         always {
-            echo "Test pipeline completed."
+            echo "Pipeline completed."
+        }
+        failure {
+            echo "Pipeline failed. Check logs and reports."
         }
     }
 }
